@@ -483,18 +483,9 @@ class Impar2DApp {
   }
 
   _renderNameInputs() {
-    if (this.mode === 'solo' || this.mode === 'online') {
-      this.el.namesLabel.textContent = 'Seu Nome';
-      const current = document.getElementById('human-name-input')?.value || 'Você';
-      this.el.namesContainer.innerHTML = `<input type="text" class="text-input" id="human-name-input" value="${this._esc(current)}" maxlength="16" placeholder="Seu nome" />`;
-    } else {
-      this.el.namesLabel.textContent = `Nomes dos ${this.playerCount} Jogadores`;
-      let html = '';
-      for (let i = 0; i < this.playerCount; i++) {
-        html += `<input type="text" class="text-input local-name-input" value="Jogador ${i + 1}" maxlength="14" placeholder="Jogador ${i + 1}" />`;
-      }
-      this.el.namesContainer.innerHTML = html;
-    }
+    this.el.namesLabel.textContent = 'Seu Nome';
+    const current = document.getElementById('human-name-input')?.value || 'Você';
+    this.el.namesContainer.innerHTML = `<input type="text" class="text-input" id="human-name-input" value="${this._esc(current)}" maxlength="16" placeholder="Seu nome" />`;
   }
 
   _bindHud() {
@@ -706,23 +697,14 @@ class Impar2DApp {
   }
 
   _startNewMatch() {
-    let players = [];
-    if (this.mode === 'solo') {
-      const humanName = (document.getElementById('human-name-input')?.value || '').trim() || 'Você';
-      players.push({ name: humanName, isHuman: true });
-      for (let i = 0; i < this.playerCount - 1; i++) {
-        players.push({
-          name: DEFAULT_AI_NAMES[i],
-          isHuman: false,
-          difficulty: this.difficulty,
-        });
-      }
-    } else {
-      const inputs = [...document.querySelectorAll('.local-name-input')];
-      players = inputs.map((inp, idx) => ({
-        name: inp.value.trim() || `Jogador ${idx + 1}`,
-        isHuman: true,
-      }));
+    const humanName = (document.getElementById('human-name-input')?.value || '').trim() || 'Você';
+    const players = [{ name: humanName, isHuman: true }];
+    for (let i = 0; i < this.playerCount - 1; i++) {
+      players.push({
+        name: DEFAULT_AI_NAMES[i],
+        isHuman: false,
+        difficulty: this.difficulty,
+      });
     }
 
     const randomStarter = Math.floor(Math.random() * players.length);
@@ -1209,11 +1191,6 @@ class Impar2DApp {
     const turnIdx = this.state.currentDispute.turnIndex;
     const turnPlayer = this.state.players[turnIdx];
 
-    if (this.mode === 'local' && turnPlayer.isHuman && turnIdx !== this.viewerIndex) {
-      this._openPassDeviceModal(turnIdx);
-      return;
-    }
-
     if (this.mode === 'online' && turnPlayer.isHuman && turnIdx !== this.viewerIndex) {
       // Turno de um jogador convidado conectado online
       this._renderAll();
@@ -1367,25 +1344,6 @@ class Impar2DApp {
         const finalRes = finalizeDispute(this.state, pickedId);
         await this._afterDisputeFinalized(finalRes, true);
       });
-    });
-  }
-
-  _openPassDeviceModal(nextIdx) {
-    const nextName = this.state.players[nextIdx].name;
-    this._showModal(`
-      <div style="text-align:center;padding:12px 0;">
-        <h2 style="margin-top:0;">Passe o Computador</h2>
-        <p style="color:#475569;font-size:15px;">Agora é a vez de <strong style="color:#0284c7;">${this._esc(nextName)}</strong>.</p>
-        <p style="color:#64748b;font-size:13px;">Garanta que os outros jogadores não estejam olhando para a tela.</p>
-        <div class="btn-row" style="justify-content:center;">
-          <button class="primary-btn" id="btn-reveal-turn" style="max-width:260px;">Sou ${this._esc(nextName)} — Jogar</button>
-        </div>
-      </div>
-    `);
-    document.getElementById('btn-reveal-turn').addEventListener('click', () => {
-      this._hideModal();
-      this.viewerIndex = nextIdx;
-      this._renderAll();
     });
   }
 
