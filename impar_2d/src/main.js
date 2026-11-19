@@ -1295,7 +1295,7 @@ class Impar2DApp {
         hapticImpact('LIGHT');
       }
       this._renderAll();
-      await sleep(2020);
+      await sleep(1414);
 
       // Etapa 4: Anima a peça voando da arena até o vencedor
       await this._animatePenaltyTileToWinner(last);
@@ -1721,7 +1721,7 @@ class Impar2DApp {
           if (this.disputeReveal?.step === 'penalty') {
             this._animatePenaltyTileToWinner(this.disputeReveal.data);
           }
-        }, 1900);
+        }, 1330);
       }
     }
 
