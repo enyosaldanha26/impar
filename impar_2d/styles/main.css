@@ -27,9 +27,22 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
   background: var(--bg);
   color: var(--text);
   font-family: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+.seg-btn,
+.primary-btn,
+.secondary-btn,
+.icon-btn,
+.room-join-btn,
+.hand-tile-btn,
+.color-choice-btn,
+.pick-tile-btn {
+  touch-action: manipulation;
 }
 
 .hidden {
@@ -94,7 +107,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
   overflow-y: auto;
 }
 
@@ -257,6 +270,23 @@ html, body {
   display: flex;
   gap: 10px;
   margin-top: 18px;
+}
+
+.lobby-footer-links {
+  margin-top: 12px;
+  text-align: center;
+  font-size: 11.5px;
+}
+
+.lobby-footer-links a {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.lobby-footer-links a:hover {
+  color: var(--text);
+  text-decoration: underline;
 }
 
 .primary-btn {
@@ -1065,7 +1095,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
   z-index: 40;
   transition: background 0.18s ease;
 }
@@ -1252,7 +1282,7 @@ html, body {
   .game-shell {
     height: auto;
     min-height: 100dvh;
-    padding: 6px 8px 12px 8px;
+    padding: max(6px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
     gap: 6px;
   }
   .topbar {
@@ -1489,7 +1519,7 @@ html, body {
   }
   .lobby-screen {
     align-items: flex-start;
-    padding: 10px;
+    padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
   }
   .lobby-shell {
     grid-template-columns: 1fr;
@@ -1521,14 +1551,14 @@ html, body {
     font-size: 22px;
   }
   .side-panel {
-    top: 52px;
-    left: 8px;
-    right: 8px;
+    top: calc(52px + env(safe-area-inset-top));
+    left: max(8px, env(safe-area-inset-left));
+    right: max(8px, env(safe-area-inset-right));
     width: auto;
     max-height: 55dvh;
   }
   .dispute-toast {
-    top: 50px;
+    top: calc(50px + env(safe-area-inset-top));
     max-width: calc(100vw - 16px);
     font-size: 12px;
     padding: 6px 14px;
@@ -1536,7 +1566,7 @@ html, body {
   }
   .modal-backdrop.minimized {
     align-items: flex-end;
-    padding: 0 8px 10px 8px;
+    padding: 0 8px max(10px, env(safe-area-inset-bottom)) 8px;
   }
   .modal-backdrop.minimized .modal-card {
     max-width: 100%;

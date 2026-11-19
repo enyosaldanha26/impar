@@ -14,6 +14,18 @@ import { getColorSymbolSvg, getManualHtml } from './ui/symbols.js';
 import { renderImparWordmark, renderTileSvg } from './ui/tile2d.js';
 import { OnlineRoomManager } from './net/onlineRoom.js';
 import { RoomDirectoryManager } from './net/roomDirectory.js';
+import {
+  copyText,
+  exitApp,
+  getInviteUrl,
+  hapticImpact,
+  hapticNotification,
+  initNativePlatform,
+  isNativeApp,
+  loadPrefs,
+  savePrefs,
+  shareRoomInvite,
+} from './platform/nativeBridge.js';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -40,6 +52,8 @@ class Impar2DApp {
     this._dirStatus = { state: 'idle', text: 'Buscando...' };
     this._lastAnimatedPenaltyKey = null;
     this._lastOpenedPhaseKey = null;
+    this._modalLocked = false;
+    this._lastBackPressAt = 0;
 
     this.directory = new RoomDirectoryManager();
     this.online = new OnlineRoomManager({
@@ -47,14 +61,12 @@ class Impar2DApp {
         this._roomMembers = members;
         if (msg?.visibility) this._roomVisibility = msg.visibility;
         if (msg?.roomName) this._roomName = msg.roomName;
-        if (
-          this.online.role === 'host' &&
-          !this.online.inMatch &&
-          (this._roomVisibility === 'public' || this._roomVisibility === 'public-pass')
-        ) {
-          this.directory.updateRoomPlayers(members.length);
-        }
         this._renderWaitingRoom();
+      },
+      onConnectionStatus: (status) => {
+        if (status === 'reconnecting' && this.mode === 'online' && this.online.role) {
+          this._showToast('Reconectando ao servidor online...');
+        }
       },
       onGuestAction: (guestIdx, msg) => this._handleGuestAction(guestIdx, msg),
       onStateSync: (msg) => this._handleGuestStateSync(msg),
@@ -65,12 +77,46 @@ class Impar2DApp {
     });
 
     this._cacheDom();
+    this._applySavedPrefs();
     this._renderWordmarks();
     this._bindLobby();
     this._bindWaitingRoom();
     this._bindHud();
     this._checkInviteLink();
-    window.addEventListener('beforeunload', () => this.directory.unpublishRoom());
+    initNativePlatform({
+      onBackButton: () => this._handleHardwareBack(),
+      onInviteCode: (code) => this._applyInviteCode(code),
+      onAppResume: () => this._handleAppResume(),
+    });
+    window.addEventListener('beforeunload', () => {
+      this.online.destroy();
+      this.directory.stopBrowsing();
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        this._handleAppResume();
+      }
+    });
+  }
+
+  _applySavedPrefs() {
+    const prefs = loadPrefs();
+    const nameInput = document.getElementById('human-name-input');
+    if (nameInput && typeof prefs.playerName === 'string' && prefs.playerName.trim()) {
+      nameInput.value = prefs.playerName.trim().slice(0, 16);
+    }
+    if (typeof prefs.soundMuted === 'boolean') {
+      this.soundMuted = prefs.soundMuted;
+      sound.setMuted(this.soundMuted);
+      this.el.btnSound.textContent = this.soundMuted ? 'Mudo' : 'Som';
+      this.el.btnSound.classList.toggle('active', !this.soundMuted);
+    }
+    if (isNativeApp()) {
+      const btnShare = document.getElementById('btn-copy-link');
+      const btnSharePub = document.getElementById('btn-copy-link-public');
+      if (btnShare) btnShare.textContent = 'Compartilhar';
+      if (btnSharePub) btnSharePub.textContent = 'Compartilhar';
+    }
   }
 
   _cacheDom() {
@@ -390,6 +436,7 @@ class Impar2DApp {
 
   async _joinListedRoom(room, password = '') {
     const myName = (document.getElementById('human-name-input')?.value || '').trim() || 'Jogador';
+    savePrefs({ playerName: myName });
     this.el.btnStartMatch.disabled = true;
     const roomBtns = [...this.el.onlineRoomsList.querySelectorAll('.room-join-btn')];
     roomBtns.forEach((b) => { b.disabled = true; });
@@ -400,6 +447,7 @@ class Impar2DApp {
         roomCode: room.roomCode,
         playerName: myName,
         password,
+        preferredBrokerId: room.brokerId || null,
       });
       this.playerCount = info.maxPlayers;
       this._roomHasPassword = info.hasPassword;
@@ -426,18 +474,26 @@ class Impar2DApp {
   }
 
   _bindWaitingRoom() {
-    document.getElementById('btn-copy-code').addEventListener('click', () => {
+    document.getElementById('btn-copy-code').addEventListener('click', async () => {
       if (!this.online.roomCode) return;
-      navigator.clipboard?.writeText(this.online.roomCode).catch(() => {});
+      await copyText(this.online.roomCode);
+      hapticImpact('LIGHT');
       this._showToast(`Código ${this.online.roomCode} copiado!`);
     });
 
-    const copyInviteLink = () => {
+    const copyInviteLink = async () => {
       if (!this.online.roomCode) return;
-      const url = new URL(window.location.href);
-      url.searchParams.set('sala', this.online.roomCode);
-      navigator.clipboard?.writeText(url.toString()).catch(() => {});
-      this._showToast('Link da sala copiado!');
+      hapticImpact('LIGHT');
+      const res = await shareRoomInvite({
+        roomCode: this.online.roomCode,
+        roomName: this._roomName,
+      });
+      if (res.method === 'clipboard' && res.ok) {
+        this._showToast('Link da sala copiado!');
+      } else if (!res.ok && res.method !== 'cancelled') {
+        await copyText(getInviteUrl(this.online.roomCode));
+        this._showToast('Link da sala copiado!');
+      }
     };
     document.getElementById('btn-copy-link').addEventListener('click', copyInviteLink);
     document.getElementById('btn-copy-link-public')?.addEventListener('click', copyInviteLink);
@@ -457,15 +513,103 @@ class Impar2DApp {
     const params = new URLSearchParams(window.location.search);
     const code = (params.get('sala') || '').trim().toUpperCase();
     if (!code) return;
+    this._applyInviteCode(code);
+  }
+
+  _applyInviteCode(code) {
+    const cleanCode = String(code || '').trim().toUpperCase();
+    if (!cleanCode) return;
+    if (this.state || !this.el.waitingRoomPanel.classList.contains('hidden')) {
+      this._showToast(`Convite recebido: código ${cleanCode}`);
+      return;
+    }
     this.mode = 'online';
     this.onlineTab = 'join';
     const modeBtn = this.el.modeSelect.querySelector('[data-mode="online"]');
     const tabBtn = this.el.onlineTabSelect.querySelector('[data-online-tab="join"]');
     if (modeBtn) this._updateSegmented(this.el.modeSelect, modeBtn);
     if (tabBtn) this._updateSegmented(this.el.onlineTabSelect, tabBtn);
-    this.el.onlineJoinCode.value = code;
+    this.el.onlineJoinCode.value = cleanCode;
     this._syncLobbyModeUI();
     this._renderNameInputs();
+    this._showToast(`Código ${cleanCode} preenchido! Informe seu nome e entre na sala.`);
+  }
+
+  _handleAppResume() {
+    const inLobbyConfig =
+      !this.el.lobbyScreen.classList.contains('hidden') &&
+      this.el.waitingRoomPanel.classList.contains('hidden');
+    if (inLobbyConfig && this.mode === 'online' && this.onlineTab === 'browse') {
+      this.directory.ensureConnected();
+    }
+    if (this.mode === 'online' && this.online.role) {
+      this.online.ensureConnected();
+    }
+  }
+
+  _handleHardwareBack() {
+    if (!this.el.modalBackdrop.classList.contains('hidden')) {
+      if (this._modalLocked) {
+        const minBtn = document.getElementById('btn-toggle-minimize');
+        if (minBtn) minBtn.click();
+        return;
+      }
+      if (this._modalKind === 'round-end') {
+        this._openExitMatchConfirmModal();
+        return;
+      }
+      if (this._modalKind === 'game-over') {
+        this._hideModal();
+        document.getElementById('btn-back-menu')?.click();
+        return;
+      }
+      if (this._modalKind === 'host-lost') {
+        document.getElementById('btn-host-lost-ok')?.click();
+        return;
+      }
+      this._hideModal();
+      return;
+    }
+
+    if (this.sidePanelMode === 'log') {
+      this.sidePanelMode = null;
+      this._renderSidePanel();
+      return;
+    }
+
+    if (!this.el.gameShell.classList.contains('hidden')) {
+      this._openExitMatchConfirmModal();
+      return;
+    }
+
+    if (!this.el.waitingRoomPanel.classList.contains('hidden')) {
+      document.getElementById('btn-leave-room')?.click();
+      return;
+    }
+
+    const now = Date.now();
+    if (now - this._lastBackPressAt < 2000) {
+      exitApp();
+      return;
+    }
+    this._lastBackPressAt = now;
+    this._showToast('Pressione Voltar novamente para sair');
+  }
+
+  _openExitMatchConfirmModal() {
+    this._showModal(`
+      <h2 style="margin-top:0;">Sair da Partida?</h2>
+      <p style="color:#475569;font-size:14px;">Você perderá o progresso da partida atual ao voltar para o menu principal.</p>
+      <div class="btn-row">
+        <button type="button" class="secondary-btn" id="btn-exit-match-cancel">Continuar</button>
+        <button type="button" class="primary-btn" id="btn-exit-match-confirm">Sair para o Menu</button>
+      </div>
+    `);
+    document.getElementById('btn-exit-match-cancel')?.addEventListener('click', () => this._hideModal());
+    document.getElementById('btn-exit-match-confirm')?.addEventListener('click', () => {
+      this._hideModal();
+      document.getElementById('btn-back-menu')?.click();
+    });
   }
 
   _setOnlineStatus(msg, kind = 'error') {
@@ -499,6 +643,7 @@ class Impar2DApp {
     this.el.btnSound.addEventListener('click', () => {
       this.soundMuted = !this.soundMuted;
       sound.setMuted(this.soundMuted);
+      savePrefs({ soundMuted: this.soundMuted });
       this.el.btnSound.textContent = this.soundMuted ? 'Mudo' : 'Som';
       this.el.btnSound.classList.toggle('active', !this.soundMuted);
     });
@@ -531,6 +676,7 @@ class Impar2DApp {
     }
 
     const myName = (document.getElementById('human-name-input')?.value || '').trim() || 'Jogador';
+    savePrefs({ playerName: myName });
     this.el.btnStartMatch.disabled = true;
 
     try {
@@ -555,22 +701,6 @@ class Impar2DApp {
         this._roomVisibility = info.visibility;
         this._roomName = info.roomName;
         this._roomMembers = info.members;
-
-        if (this.roomVisibility === 'public' || this.roomVisibility === 'public-pass') {
-          this._setOnlineStatus('Publicando sala em Salas Abertas...', 'info');
-          const pub = await this.directory.publishRoom({
-            roomCode: info.roomCode,
-            roomName: info.roomName,
-            hostName: myName,
-            players: info.members.length,
-            maxPlayers: info.maxPlayers,
-            hasPassword: info.hasPassword,
-            visibility: this.roomVisibility,
-          });
-          if (!pub?.ok) {
-            this._showToast('Sala criada! Lista pública indisponível agora — use o código/link se precisar.');
-          }
-        }
 
         this._enterWaitingRoom();
       } else {
@@ -698,6 +828,7 @@ class Impar2DApp {
 
   _startNewMatch() {
     const humanName = (document.getElementById('human-name-input')?.value || '').trim() || 'Você';
+    savePrefs({ playerName: humanName });
     const players = [{ name: humanName, isHuman: true }];
     for (let i = 0; i < this.playerCount - 1; i++) {
       players.push({
@@ -1042,6 +1173,7 @@ class Impar2DApp {
     if (this.state.currentDispute.turnIndex !== this.viewerIndex) return;
 
     this.busy = true;
+    hapticImpact('LIGHT');
 
     if (this.mode === 'online' && this.online.role === 'guest') {
       sound.playTileClack(1.0);
@@ -1069,6 +1201,7 @@ class Impar2DApp {
   async _handlePlayOutcome(result) {
     if (result.action === 'NEED_COLOR_10') {
       sound.playTenSpecial();
+      hapticImpact('MEDIUM');
       if (this.state.players[result.playerIndex].isHuman) {
         if (this.mode === 'online' && result.playerIndex !== this.viewerIndex) {
           // Aguarda o convidado escolher a cor da Peça 10 via rede
@@ -1156,6 +1289,11 @@ class Impar2DApp {
       // Etapa 3: Marca a peça de menor valor que o vencedor vai pegar
       this.disputeReveal = { step: 'penalty', data: last };
       sound.playDisputeCollect(winner.isHuman && last.winnerIndex === 0);
+      if (last.winnerIndex === this.viewerIndex) {
+        hapticNotification('WARNING');
+      } else {
+        hapticImpact('LIGHT');
+      }
       this._renderAll();
       await sleep(2020);
 
@@ -1176,6 +1314,9 @@ class Impar2DApp {
 
     if (res.action === 'GAME_OVER') {
       sound.playVictory();
+      if (this.state.winners.includes(this.viewerIndex)) {
+        hapticNotification('SUCCESS');
+      }
       this._openRoundSummaryModal(true);
       this.busy = false;
       return;
@@ -1287,7 +1428,7 @@ class Impar2DApp {
       </div>
       <p class="modal-desc" style="color:#475569;font-size:14px;margin:10px 0 0 0;">Você deve escolher a próxima cor a ser seguida:</p>
       <div class="color-picker-grid">${buttonsHtml}</div>
-    `, { minimized: true });
+    `, { minimized: true, locked: true });
     this._bindMinimizeButton();
 
     this.el.modalCard.querySelectorAll('[data-color]').forEach((btn) => {
@@ -1330,7 +1471,7 @@ class Impar2DApp {
       </div>
       <p class="modal-desc" style="color:#475569;font-size:14px;margin:10px 0 0 0;">Você venceu a disputa com <strong>${res.winningTile.value}</strong>. Escolha qual das peças de menor valor deseja pegar:</p>
       <div class="tile-picker-grid">${cardsHtml}</div>
-    `, { minimized: true });
+    `, { minimized: true, locked: true });
     this._bindMinimizeButton();
 
     this.el.modalCard.querySelectorAll('[data-pick]').forEach((btn) => {
@@ -1398,7 +1539,7 @@ class Impar2DApp {
         <tbody>${rowsHtml}</tbody>
       </table>
       <div class="btn-row">${actionButtonsHtml}</div>
-    `);
+    `, { kind: isGameOver ? 'game-over' : 'round-end' });
 
     if (isGameOver) {
       document.getElementById('btn-back-lobby')?.addEventListener('click', () => {
@@ -1483,7 +1624,9 @@ class Impar2DApp {
     });
   }
 
-  _showModal(html, { minimized = false } = {}) {
+  _showModal(html, { minimized = false, locked = false, kind = null } = {}) {
+    this._modalLocked = Boolean(locked);
+    this._modalKind = kind;
     this.el.modalBackdrop.classList.toggle('minimized', minimized);
     this.el.modalCard.innerHTML = html;
     this.el.modalBackdrop.classList.remove('hidden');
@@ -1491,6 +1634,8 @@ class Impar2DApp {
   }
 
   _hideModal() {
+    this._modalLocked = false;
+    this._modalKind = null;
     this.el.modalBackdrop.classList.remove('minimized');
     this.el.modalCard.style.marginTop = '';
     this.el.modalBackdrop.classList.add('hidden');
@@ -1567,6 +1712,11 @@ class Impar2DApp {
       if (this._lastAnimatedPenaltyKey !== penKey) {
         this._lastAnimatedPenaltyKey = penKey;
         sound.playDisputeCollect(this.disputeReveal.data.winnerIndex === this.viewerIndex);
+        if (this.disputeReveal.data.winnerIndex === this.viewerIndex) {
+          hapticNotification('WARNING');
+        } else {
+          hapticImpact('LIGHT');
+        }
         setTimeout(() => {
           if (this.disputeReveal?.step === 'penalty') {
             this._animatePenaltyTileToWinner(this.disputeReveal.data);
@@ -1604,6 +1754,9 @@ class Impar2DApp {
     } else if (s.phase === PHASES.GAME_OVER && this._lastOpenedPhaseKey !== phaseKey) {
       this._lastOpenedPhaseKey = phaseKey;
       sound.playVictory();
+      if (s.winners.includes(this.viewerIndex)) {
+        hapticNotification('SUCCESS');
+      }
       this._openRoundSummaryModal(true);
     } else if (s.phase === PHASES.PLAY_TILE) {
       if (!this.el.modalBackdrop.classList.contains('hidden')) {
@@ -1635,7 +1788,7 @@ class Impar2DApp {
       <div class="btn-row">
         <button class="primary-btn" id="btn-host-lost-ok">Voltar ao Menu</button>
       </div>
-    `);
+    `, { kind: 'host-lost' });
     document.getElementById('btn-host-lost-ok').addEventListener('click', () => {
       this._hideModal();
       document.getElementById('btn-back-menu').click();

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Política de Privacidade — ÍMPAR</title>
+  <style>
+    :root {
+      --bg: #f5f7fa;
+      --surface: #ffffff;
+      --border: #e1e6ef;
+      --text: #14171f;
+      --muted: #475569;
+      --accent: #00aeef;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px 16px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+      line-height: 1.6;
+    }
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 20px;
+      padding: 28px 26px;
+      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
+    }
+    h1 {
+      margin: 0 0 6px 0;
+      font-size: 24px;
+    }
+    .updated {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 22px;
+    }
+    h2 {
+      font-size: 16px;
+      color: #0284c7;
+      margin: 22px 0 8px 0;
+    }
+    p, li {
+      font-size: 14.5px;
+      color: #334155;
+    }
+    a {
+      color: #0284c7;
+      font-weight: 600;
+    }
+    .back-link {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 9px 16px;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #ffffff;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Política de Privacidade — ÍMPAR</h1>
+    <div class="updated">Última atualização: Novembro de 2026</div>
+
+    <p>
+      O aplicativo e versão web <strong>ÍMPAR</strong> (jogo de estratégia de Ênyo Saldanha e Eurico Cunha)
+      respeita a sua privacidade e foi desenvolvido para funcionar sem criação de contas, sem anúncios
+      e sem rastreamento comportamental.
+    </p>
+
+    <h2>1. Dados que NÃO coletamos</h2>
+    <ul>
+      <li>Não exigimos cadastro, login, e-mail, telefone ou senha pessoal.</li>
+      <li>Não exibimos anúncios e não utilizamos SDKs de publicidade ou analytics de terceiros.</li>
+      <li>Não coletamos localização precisa, contatos, fotos, microfone ou câmera.</li>
+    </ul>
+
+    <h2>2. Preferências salvas apenas no seu dispositivo</h2>
+    <p>
+      O nome de exibição (apelido escolhido por você) e a preferência de áudio (som ligado ou mudo)
+      são armazenados exclusivamente no armazenamento local do próprio aparelho (<code>localStorage</code>),
+      podendo ser alterados ou apagados a qualquer momento limpando os dados do aplicativo.
+    </p>
+
+    <h2>3. Salas Online e Comunicação em Tempo Real</h2>
+    <p>
+      Quando você escolhe jogar no modo <strong>Online (Salas)</strong>:
+    </p>
+    <ul>
+      <li>
+        O seu apelido, o nome opcional da sala, o código da sala e o status de disponibilidade são
+        transmitidos temporariamente por conexão criptografada (MQTT sobre WSS e sinalização WebRTC/PeerJS)
+        apenas para conectar os participantes da partida.
+      </li>
+      <li>
+        Nenhuma partida ou conversa é gravada em banco de dados permanente pelos desenvolvedores.
+        Ao fechar ou sair da sala, o anúncio público da sala é removido automaticamente.
+      </li>
+    </ul>
+
+    <h2>4. Crianças e Faixa Etária</h2>
+    <p>
+      O jogo ÍMPAR é indicado para maiores de 14 anos conforme a edição física oficial e não coleta
+      intencionalmente dados pessoais identificáveis de crianças ou adolescentes.
+    </p>
+
+    <h2>5. Contato</h2>
+    <p>
+      Em caso de dúvidas sobre privacidade ou solicitação relacionada ao aplicativo, entre em contato
+      pelo e-mail <a href="mailto:enyosaldanha@gmail.com">enyosaldanha@gmail.com</a> ou pelo repositório
+      oficial em <a href="https://github.com/enyosaldanha26/impar" target="_blank" rel="noopener noreferrer">github.com/enyosaldanha26/impar</a>.
+    </p>
+
+    <a class="back-link" href="./impar_2d/index.html">Voltar ao Jogo</a>
+  </main>
+</body>
+</html>
