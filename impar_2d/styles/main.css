@@ -1099,24 +1099,268 @@ html, body {
 }
 
 @media (max-width: 900px) {
-  .lobby-shell {
-    grid-template-columns: 1fr;
+  html, body {
+    height: auto;
+    min-height: 100dvh;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
-  .cover-column {
-    padding: 18px;
+  .game-shell {
+    height: auto;
+    min-height: 100dvh;
+    padding: 6px 8px 12px 8px;
+    gap: 6px;
   }
-  .cover-img {
-    max-width: 190px;
+  .topbar {
+    gap: 4px;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .topbar-group {
+    padding: 4px 6px;
+    gap: 4px;
+    border-radius: 10px;
+    min-width: 0;
+  }
+  #hud-wordmark svg {
+    height: 13px;
+    width: auto;
+    display: block;
+  }
+  .divider-v {
+    height: 12px;
+  }
+  .stat-chip {
+    font-size: 10px;
+    gap: 2px;
+  }
+  .topbar .icon-btn {
+    padding: 3px 5.5px;
+    font-size: 10.5px;
+    border-radius: 7px;
+  }
+  .table-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+  }
+  .opponents-top {
+    padding: 0;
+    gap: 6px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .table-middle {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .side-seats {
+    width: 100%;
+    max-width: 100%;
+    gap: 6px;
+  }
+  #opponents-left {
+    order: 1;
+    justify-self: stretch;
+  }
+  #opponents-right {
+    order: 2;
+    justify-self: stretch;
+  }
+  #center-arena {
+    order: 3;
+    max-width: 100%;
+    min-height: 112px;
+    padding: 8px 10px 10px 10px;
+    gap: 6px;
+    border-radius: 16px;
   }
   .seat-card,
   [data-players="5"] .seat-card {
     width: 100%;
+    min-height: 0;
+    padding: 6px 8px;
+    border-radius: 12px;
   }
-  .table-middle {
-    grid-template-columns: 1fr;
+  .seat-header {
+    margin-bottom: 4px;
+    gap: 6px;
+  }
+  .seat-name {
+    font-size: 12px;
+  }
+  .seat-score {
+    font-size: 10.5px;
+    white-space: nowrap;
+  }
+  .opp-hand {
+    gap: 2px;
+    min-height: 28px;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .tile-even.tile-opp,
+  [data-players="5"] .tile-even.tile-opp {
+    width: clamp(22px, 6.4vw, 28px);
+    height: clamp(22px, 6.4vw, 28px);
+  }
+  .tile-odd.tile-opp,
+  [data-players="5"] .tile-odd.tile-opp {
+    width: clamp(25px, 7.2vw, 31px);
+    height: clamp(22px, 6.4vw, 28px);
+  }
+  .opp-penalties {
+    margin-top: 4px;
+    padding-top: 4px;
+    min-height: 22px;
+    font-size: 10px;
+    gap: 3px;
+  }
+  .tile-even.tile-sm {
+    width: 18px;
+    height: 18px;
+  }
+  .tile-odd.tile-sm {
+    width: 20px;
+    height: 18px;
+  }
+  .arena-meta {
+    font-size: 10px;
+  }
+  .required-pill {
+    padding: 4px 12px;
+    font-size: 13px;
+    gap: 6px;
+    border-width: 2px;
+  }
+  .required-pill .color-dot {
+    width: 12px;
+    height: 12px;
   }
   .arena-plays {
+    gap: 5px;
     flex-wrap: wrap;
+  }
+  .arena-empty {
+    padding: 12px 0;
+    font-size: 12px;
+  }
+  .played-slot {
+    min-width: 54px;
+    padding: 4px;
+    gap: 3px;
+  }
+  .tile-even.tile-md {
+    width: 38px;
+    height: 38px;
+  }
+  .tile-odd.tile-md {
+    width: 43px;
+    height: 38px;
+  }
+  .played-who {
+    font-size: 10px;
+    padding: 1px 6px;
+  }
+  .arena-notice {
+    font-size: 11.5px;
+    padding: 6px 10px;
+  }
+  .human-zone {
+    padding: 8px 10px 10px 10px;
+    gap: 6px;
+    border-radius: 16px;
+    margin-top: auto;
+  }
+  .human-bar {
+    font-size: 12px;
+    gap: 6px;
+  }
+  .hover-pill {
+    display: none !important;
+  }
+  .human-hand {
+    gap: 6px;
+    min-height: 52px;
+  }
+  .tile-even.tile-hand {
+    width: 44px;
+    height: 44px;
+  }
+  .tile-odd.tile-hand {
+    width: 49px;
+    height: 44px;
+  }
+  .hand-tile-btn.legal:hover {
+    transform: none;
+    filter: none;
+  }
+  .hand-tile-btn.legal:active {
+    transform: scale(0.94);
+  }
+  .lobby-screen {
+    align-items: flex-start;
+    padding: 10px;
+  }
+  .lobby-shell {
+    grid-template-columns: 1fr;
+    border-radius: 18px;
+  }
+  .cover-column {
+    padding: 14px;
+    gap: 10px;
+  }
+  .cover-img {
+    max-width: 135px;
+  }
+  .config-column {
+    padding: 16px;
+  }
+  .room-code-box {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  .room-code-text {
+    font-size: 22px;
+  }
+  .side-panel {
+    top: 52px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: 55dvh;
+  }
+  .dispute-toast {
+    top: 50px;
+    max-width: calc(100vw - 16px);
+    font-size: 12px;
+    padding: 6px 14px;
+    text-align: center;
+  }
+  .modal-backdrop.minimized {
+    align-items: flex-end;
+    padding: 0 8px 10px 8px;
+  }
+  .modal-backdrop.minimized .modal-card {
+    max-width: 100%;
+    padding: 10px 12px;
+  }
+  .modal-backdrop.minimized .color-picker-grid {
+    grid-template-columns: repeat(5, 1fr);
+    gap: 5px;
+  }
+  .modal-backdrop.minimized .color-choice-btn {
+    padding: 7px 3px;
+    font-size: 10.5px;
+  }
+  .modal-backdrop.minimized .color-choice-btn svg {
+    width: 18px;
+    height: 18px;
   }
   .hide-sm {
     display: none !important;

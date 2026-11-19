@@ -1204,7 +1204,7 @@ class Impar2DApp {
   }
 
   _positionMinimizedModal(isMinimized) {
-    if (!isMinimized) {
+    if (!isMinimized || window.innerWidth <= 900) {
       this.el.modalCard.style.marginTop = '';
       return;
     }
