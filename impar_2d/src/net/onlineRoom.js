@@ -84,6 +84,8 @@ export class OnlineRoomManager {
     this.password = '';
     this.maxPlayers = 4;
     this.hostName = '';
+    this.visibility = 'private';
+    this.roomName = '';
     this.myIndex = 0;
     this.inMatch = false;
     this.guests = []; // { peerId, conn, name, index }
@@ -99,7 +101,7 @@ export class OnlineRoomManager {
   /**
    * Cria uma sala como Anfitrião.
    */
-  async createRoom({ hostName, maxPlayers, password = '' }) {
+  async createRoom({ hostName, maxPlayers, password = '', visibility = 'private', roomName = '' }) {
     this._ensurePeerJs();
     this.destroy();
 
@@ -107,6 +109,8 @@ export class OnlineRoomManager {
     this.hostName = hostName;
     this.maxPlayers = maxPlayers;
     this.password = password.trim();
+    this.visibility = visibility;
+    this.roomName = String(roomName || '').trim().slice(0, 28) || `Mesa de ${hostName}`;
     this.myIndex = 0;
     this.inMatch = false;
     this.guests = [];
@@ -122,6 +126,8 @@ export class OnlineRoomManager {
           roomCode: code,
           hasPassword: Boolean(this.password),
           maxPlayers: this.maxPlayers,
+          visibility: this.visibility,
+          roomName: this.roomName,
           members: this.getMembersSnapshot(),
         };
       } catch (err) {
@@ -194,6 +200,8 @@ export class OnlineRoomManager {
             roomCode: this.roomCode,
             hasPassword: Boolean(this.password),
             maxPlayers: this.maxPlayers,
+            visibility: this.visibility,
+            roomName: this.roomName,
             assignedIndex: guestIndex,
             members: this.getMembersSnapshot(),
           });
@@ -247,6 +255,8 @@ export class OnlineRoomManager {
           members,
           maxPlayers: this.maxPlayers,
           hasPassword: Boolean(this.password),
+          visibility: this.visibility,
+          roomName: this.roomName,
         });
       }
     }
@@ -338,6 +348,8 @@ export class OnlineRoomManager {
             clearTimeout(timeout);
             this.myIndex = msg.assignedIndex;
             this.maxPlayers = msg.maxPlayers;
+            this.visibility = msg.visibility || 'private';
+            this.roomName = msg.roomName || '';
             resolve(msg);
             return;
           }
@@ -419,6 +431,8 @@ export class OnlineRoomManager {
     }
     this.role = null;
     this.roomCode = null;
+    this.visibility = 'private';
+    this.roomName = '';
     this.inMatch = false;
   }
 }

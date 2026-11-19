@@ -13,13 +13,15 @@ import { sound } from './audio/sound.js';
 import { getColorSymbolSvg, getManualHtml } from './ui/symbols.js';
 import { renderImparWordmark, renderTileSvg } from './ui/tile2d.js';
 import { OnlineRoomManager } from './net/onlineRoom.js';
+import { RoomDirectoryManager } from './net/roomDirectory.js';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 class Impar2DApp {
   constructor() {
     this.mode = 'solo';
-    this.onlineTab = 'create';
+    this.onlineTab = 'browse';
+    this.roomVisibility = 'public';
     this.playerCount = 4;
     this.difficulty = 'tatico';
     this.state = null;
@@ -32,12 +34,26 @@ class Impar2DApp {
     this._lastArenaCount = 0;
     this._roomMembers = [];
     this._roomHasPassword = false;
+    this._roomVisibility = 'private';
+    this._roomName = '';
+    this._publicRooms = [];
+    this._dirStatus = { state: 'idle', text: 'Buscando...' };
     this._lastAnimatedPenaltyKey = null;
     this._lastOpenedPhaseKey = null;
 
+    this.directory = new RoomDirectoryManager();
     this.online = new OnlineRoomManager({
-      onRoomUpdate: (members) => {
+      onRoomUpdate: (members, msg) => {
         this._roomMembers = members;
+        if (msg?.visibility) this._roomVisibility = msg.visibility;
+        if (msg?.roomName) this._roomName = msg.roomName;
+        if (
+          this.online.role === 'host' &&
+          !this.online.inMatch &&
+          (this._roomVisibility === 'public' || this._roomVisibility === 'public-pass')
+        ) {
+          this.directory.updateRoomPlayers(members.length);
+        }
         this._renderWaitingRoom();
       },
       onGuestAction: (guestIdx, msg) => this._handleGuestAction(guestIdx, msg),
@@ -54,6 +70,7 @@ class Impar2DApp {
     this._bindWaitingRoom();
     this._bindHud();
     this._checkInviteLink();
+    window.addEventListener('beforeunload', () => this.directory.unpublishRoom());
   }
 
   _cacheDom() {
@@ -63,6 +80,10 @@ class Impar2DApp {
       waitingRoomPanel: document.getElementById('waiting-room-panel'),
       waitingWordmark: document.getElementById('waiting-wordmark'),
       roomLockBadge: document.getElementById('room-lock-badge'),
+      waitingRoomPublicBox: document.getElementById('waiting-room-public-box'),
+      waitingRoomCodeBox: document.getElementById('waiting-room-code-box'),
+      waitingPublicName: document.getElementById('waiting-public-name'),
+      waitingCodeRoomName: document.getElementById('waiting-code-room-name'),
       waitingRoomCode: document.getElementById('waiting-room-code'),
       waitingPlayersLabel: document.getElementById('waiting-players-label'),
       waitingPlayersList: document.getElementById('waiting-players-list'),
@@ -77,7 +98,16 @@ class Impar2DApp {
       modeSelect: document.getElementById('mode-select'),
       onlineActionSection: document.getElementById('online-action-section'),
       onlineTabSelect: document.getElementById('online-tab-select'),
+      onlineBrowseFields: document.getElementById('online-browse-fields'),
+      onlineDirStatus: document.getElementById('online-dir-status'),
+      btnRefreshRooms: document.getElementById('btn-refresh-rooms'),
+      onlineRoomsList: document.getElementById('online-rooms-list'),
       onlineCreateFields: document.getElementById('online-create-fields'),
+      onlineVisibilitySelect: document.getElementById('online-visibility-select'),
+      onlineVisibilityHint: document.getElementById('online-visibility-hint'),
+      onlineRoomName: document.getElementById('online-room-name'),
+      onlineCreatePassWrap: document.getElementById('online-create-pass-wrap'),
+      onlinePassLabel: document.getElementById('online-pass-label'),
       onlineJoinFields: document.getElementById('online-join-fields'),
       onlineCreatePass: document.getElementById('online-create-pass'),
       onlineJoinCode: document.getElementById('online-join-code'),
@@ -132,6 +162,7 @@ class Impar2DApp {
       this._updateSegmented(this.el.modeSelect, btn);
       this._syncLobbyModeUI();
       this._renderNameInputs();
+      this._syncRoomBrowserSubscription();
     });
 
     this.el.onlineTabSelect.addEventListener('click', (e) => {
@@ -140,6 +171,33 @@ class Impar2DApp {
       this.onlineTab = btn.dataset.onlineTab;
       this._updateSegmented(this.el.onlineTabSelect, btn);
       this._syncLobbyModeUI();
+      this._syncRoomBrowserSubscription();
+    });
+
+    this.el.onlineVisibilitySelect.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-visibility]');
+      if (!btn) return;
+      this.roomVisibility = btn.dataset.visibility;
+      this._updateSegmented(this.el.onlineVisibilitySelect, btn);
+      this._syncCreateVisibilityUI();
+      this._syncLobbyModeUI();
+    });
+
+    this.el.btnRefreshRooms.addEventListener('click', () => {
+      this.directory.refresh();
+    });
+
+    this.el.onlineRoomsList.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-join-room]');
+      if (!btn) return;
+      const code = btn.dataset.joinRoom;
+      const room = this._publicRooms.find((r) => r.roomCode === code);
+      if (!room || (room.players || 1) >= room.maxPlayers) return;
+      if (room.hasPassword) {
+        this._openRoomPasswordModal(room);
+      } else {
+        this._joinListedRoom(room, '');
+      }
     });
 
     this.el.countSelect.addEventListener('click', (e) => {
@@ -161,24 +219,209 @@ class Impar2DApp {
     this.el.btnStartMatch.addEventListener('click', () => this._handleLobbyPrimaryAction());
   }
 
+  _syncCreateVisibilityUI() {
+    if (this.roomVisibility === 'public') {
+      this.el.onlineCreatePassWrap.classList.add('hidden');
+      this.el.onlineCreatePass.value = '';
+      this.el.onlineVisibilityHint.textContent =
+        'Aparece em Salas Abertas — qualquer pessoa entra sem código e sem senha.';
+    } else if (this.roomVisibility === 'public-pass') {
+      this.el.onlineCreatePassWrap.classList.remove('hidden');
+      this.el.onlinePassLabel.textContent = 'Senha da Sala (obrigatória)';
+      this.el.onlineCreatePass.placeholder = 'Crie uma senha para esta sala';
+      this.el.onlineVisibilityHint.textContent =
+        'Aparece em Salas Abertas, mas exige senha para entrar.';
+    } else {
+      this.el.onlineCreatePassWrap.classList.remove('hidden');
+      this.el.onlinePassLabel.textContent = 'Senha da Sala (opcional)';
+      this.el.onlineCreatePass.placeholder = 'Deixe vazio para sala privada sem senha';
+      this.el.onlineVisibilityHint.textContent =
+        'Oculta da lista — convidados entram usando o código ou link.';
+    }
+  }
+
+  _switchToCreateFreeRoom() {
+    this.onlineTab = 'create';
+    this.roomVisibility = 'public';
+    const tabBtn = this.el.onlineTabSelect.querySelector('[data-online-tab="create"]');
+    const visBtn = this.el.onlineVisibilitySelect.querySelector('[data-visibility="public"]');
+    if (tabBtn) this._updateSegmented(this.el.onlineTabSelect, tabBtn);
+    if (visBtn) this._updateSegmented(this.el.onlineVisibilitySelect, visBtn);
+    this._syncLobbyModeUI();
+    this._syncRoomBrowserSubscription();
+    this.el.onlineRoomName?.focus();
+  }
+
   _syncLobbyModeUI() {
     const isOnline = this.mode === 'online';
+    const isBrowse = isOnline && this.onlineTab === 'browse';
     const isCreate = isOnline && this.onlineTab === 'create';
     const isJoin = isOnline && this.onlineTab === 'join';
 
     this.el.onlineActionSection.classList.toggle('hidden', !isOnline);
+    this.el.onlineBrowseFields.classList.toggle('hidden', !isBrowse);
     this.el.onlineCreateFields.classList.toggle('hidden', !isCreate);
     this.el.onlineJoinFields.classList.toggle('hidden', !isJoin);
-    this.el.countSection.classList.toggle('hidden', isJoin);
+    this.el.countSection.classList.toggle('hidden', isBrowse || isJoin);
     this.el.difficultySection.classList.toggle('hidden', !(this.mode === 'solo' || isCreate));
+    this._syncCreateVisibilityUI();
     this._clearOnlineStatus();
 
-    if (isCreate) {
-      this.el.btnStartMatch.textContent = 'Criar Sala';
+    if (isBrowse) {
+      this.el.btnStartMatch.textContent = 'Criar Sala Livre';
+    } else if (isCreate) {
+      this.el.btnStartMatch.textContent =
+        this.roomVisibility === 'public'
+          ? 'Criar Sala Livre'
+          : this.roomVisibility === 'public-pass'
+            ? 'Criar Sala Pública'
+            : 'Criar Sala Privada';
     } else if (isJoin) {
       this.el.btnStartMatch.textContent = 'Entrar na Sala';
     } else {
       this.el.btnStartMatch.textContent = 'Iniciar Partida';
+    }
+  }
+
+  _syncRoomBrowserSubscription() {
+    const inLobbyConfig = this.el.waitingRoomPanel.classList.contains('hidden');
+    if (this.mode === 'online' && this.onlineTab === 'browse' && inLobbyConfig) {
+      this._startRoomBrowser();
+    } else {
+      this._stopRoomBrowser();
+    }
+  }
+
+  _startRoomBrowser() {
+    this._renderDirStatus('connecting', 'Buscando salas abertas...');
+    this._renderPublicRoomsList();
+    this.directory.startBrowsing({
+      onRoomsChange: (rooms) => {
+        this._publicRooms = rooms;
+        this._renderPublicRoomsList();
+      },
+      onStatusChange: (state, text) => {
+        this._renderDirStatus(state, text);
+        this._renderPublicRoomsList();
+      },
+    });
+  }
+
+  _stopRoomBrowser() {
+    this.directory.stopBrowsing();
+  }
+
+  _renderDirStatus(state, text) {
+    this._dirStatus = { state, text };
+    if (!this.el.onlineDirStatus) return;
+    const label = state === 'connected' ? 'Ao vivo' : state === 'connecting' ? 'Buscando...' : 'Offline';
+    this.el.onlineDirStatus.textContent = label;
+    this.el.onlineDirStatus.title = text || label;
+    this.el.onlineDirStatus.className = `dir-status-pill ${state}`;
+  }
+
+  _renderPublicRoomsList() {
+    if (!this.el.onlineRoomsList) return;
+    if (this._publicRooms.length === 0) {
+      let emptyHtml =
+        'Nenhuma sala aberta no momento.<br/>Clique em <strong>Criar Sala Livre</strong> para abrir uma mesa pública!';
+      if (this._dirStatus.state === 'connecting') {
+        emptyHtml = 'Procurando salas abertas...';
+      } else if (this._dirStatus.state === 'offline') {
+        emptyHtml =
+          'Lista pública indisponível no momento.<br/>Tente <strong>Atualizar</strong> ou use <strong>Criar Sala</strong> / <strong>Por Código</strong>.';
+      }
+      this.el.onlineRoomsList.innerHTML = `<div class="rooms-empty">${emptyHtml}</div>`;
+      return;
+    }
+
+    this.el.onlineRoomsList.innerHTML = this._publicRooms
+      .map((room) => {
+        const players = room.players || 1;
+        const isFull = players >= room.maxPlayers;
+        const badge = room.hasPassword
+          ? '<span class="room-badge-lock">🔒 Senha</span>'
+          : '<span class="room-badge-open">🌐 Livre</span>';
+        const roomTitle = room.roomName || `Mesa de ${room.hostName || 'Anfitrião'}`;
+        return `
+          <div class="room-list-item">
+            <div class="room-item-info">
+              <div class="room-item-title">
+                <span>${this._esc(roomTitle)}</span>
+                ${badge}
+              </div>
+              <div class="room-item-meta">
+                Anfitrião: <strong>${this._esc(room.hostName || 'Anfitrião')}</strong> • ${players}/${room.maxPlayers} jogadores
+              </div>
+            </div>
+            <button type="button" class="room-join-btn" data-join-room="${this._esc(room.roomCode)}" ${isFull ? 'disabled' : ''}>
+              ${isFull ? 'Lotada' : 'Entrar'}
+            </button>
+          </div>
+        `;
+      })
+      .join('');
+  }
+
+  _openRoomPasswordModal(room) {
+    const title = room.roomName || `Mesa de ${room.hostName || 'Anfitrião'}`;
+    this._showModal(`
+      <h2 style="margin-top:0;">Entrar em ${this._esc(title)}</h2>
+      <p style="color:#475569;font-size:13.5px;margin:6px 0 12px 0;">Esta sala pública exige senha para entrar.</p>
+      <input type="password" class="text-input" id="modal-room-pass-input" maxlength="20" placeholder="Digite a senha da sala" style="width:100%;" />
+      <div class="btn-row">
+        <button type="button" class="secondary-btn" id="btn-modal-pass-cancel">Cancelar</button>
+        <button type="button" class="primary-btn" id="btn-modal-pass-confirm">Entrar</button>
+      </div>
+    `);
+    const input = document.getElementById('modal-room-pass-input');
+    input?.focus();
+    const submit = () => {
+      const pass = (input?.value || '').trim();
+      this._hideModal();
+      this._joinListedRoom(room, pass);
+    };
+    document.getElementById('btn-modal-pass-cancel')?.addEventListener('click', () => this._hideModal());
+    document.getElementById('btn-modal-pass-confirm')?.addEventListener('click', submit);
+    input?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submit();
+    });
+  }
+
+  async _joinListedRoom(room, password = '') {
+    const myName = (document.getElementById('human-name-input')?.value || '').trim() || 'Jogador';
+    this.el.btnStartMatch.disabled = true;
+    const roomBtns = [...this.el.onlineRoomsList.querySelectorAll('.room-join-btn')];
+    roomBtns.forEach((b) => { b.disabled = true; });
+    this._setOnlineStatus(`Entrando em "${room.roomName || room.hostName}"...`, 'info');
+
+    try {
+      const info = await this.online.joinRoom({
+        roomCode: room.roomCode,
+        playerName: myName,
+        password,
+      });
+      this.playerCount = info.maxPlayers;
+      this._roomHasPassword = info.hasPassword;
+      this._roomVisibility = info.visibility || room.visibility || 'public';
+      this._roomName = info.roomName || room.roomName || '';
+      this._roomMembers = info.members;
+      this._stopRoomBrowser();
+      this._enterWaitingRoom();
+    } catch (err) {
+      const msg = err.message || 'Não foi possível entrar na sala.';
+      this._setOnlineStatus(msg, 'error');
+      const lower = msg.toLowerCase();
+      if (
+        lower.includes('não encontrada') ||
+        lower.includes('já começou') ||
+        lower.includes('tempo esgotado')
+      ) {
+        this.directory.removeLocalRoom(room.roomCode);
+      }
+    } finally {
+      this.el.btnStartMatch.disabled = false;
+      this._renderPublicRoomsList();
     }
   }
 
@@ -189,17 +432,20 @@ class Impar2DApp {
       this._showToast(`Código ${this.online.roomCode} copiado!`);
     });
 
-    document.getElementById('btn-copy-link').addEventListener('click', () => {
+    const copyInviteLink = () => {
       if (!this.online.roomCode) return;
       const url = new URL(window.location.href);
       url.searchParams.set('sala', this.online.roomCode);
       navigator.clipboard?.writeText(url.toString()).catch(() => {});
       this._showToast('Link da sala copiado!');
-    });
+    };
+    document.getElementById('btn-copy-link').addEventListener('click', copyInviteLink);
+    document.getElementById('btn-copy-link-public')?.addEventListener('click', copyInviteLink);
 
     this.el.chkFillBots.addEventListener('change', () => this._renderWaitingRoom());
 
     document.getElementById('btn-leave-room').addEventListener('click', () => {
+      this.directory.unpublishRoom();
       this.online.destroy();
       this._leaveWaitingRoom();
     });
@@ -268,6 +514,7 @@ class Impar2DApp {
 
     document.getElementById('btn-back-menu').addEventListener('click', () => {
       if (this.mode === 'online') {
+        this.directory.unpublishRoom();
         this.online.destroy();
         this._leaveWaitingRoom();
       }
@@ -287,20 +534,53 @@ class Impar2DApp {
       return;
     }
 
+    if (this.onlineTab === 'browse') {
+      this._switchToCreateFreeRoom();
+      return;
+    }
+
     const myName = (document.getElementById('human-name-input')?.value || '').trim() || 'Jogador';
     this.el.btnStartMatch.disabled = true;
 
     try {
       if (this.onlineTab === 'create') {
+        const rawPass = (this.el.onlineCreatePass.value || '').trim();
+        if (this.roomVisibility === 'public-pass' && !rawPass) {
+          this._setOnlineStatus('Digite uma senha para criar uma sala pública com senha.', 'error');
+          return;
+        }
+        const pass = this.roomVisibility === 'public' ? '' : rawPass;
+        const roomName = (this.el.onlineRoomName?.value || '').trim();
+
         this._setOnlineStatus('Criando sala online...', 'info');
-        const pass = this.el.onlineCreatePass.value || '';
         const info = await this.online.createRoom({
           hostName: myName,
           maxPlayers: this.playerCount,
           password: pass,
+          visibility: this.roomVisibility,
+          roomName,
         });
         this._roomHasPassword = info.hasPassword;
+        this._roomVisibility = info.visibility;
+        this._roomName = info.roomName;
         this._roomMembers = info.members;
+
+        if (this.roomVisibility === 'public' || this.roomVisibility === 'public-pass') {
+          this._setOnlineStatus('Publicando sala em Salas Abertas...', 'info');
+          const pub = await this.directory.publishRoom({
+            roomCode: info.roomCode,
+            roomName: info.roomName,
+            hostName: myName,
+            players: info.members.length,
+            maxPlayers: info.maxPlayers,
+            hasPassword: info.hasPassword,
+            visibility: this.roomVisibility,
+          });
+          if (!pub?.ok) {
+            this._showToast('Sala criada! Lista pública indisponível agora — use o código/link se precisar.');
+          }
+        }
+
         this._enterWaitingRoom();
       } else {
         this._setOnlineStatus('Conectando à sala...', 'info');
@@ -313,6 +593,8 @@ class Impar2DApp {
         });
         this.playerCount = info.maxPlayers;
         this._roomHasPassword = info.hasPassword;
+        this._roomVisibility = info.visibility || 'private';
+        this._roomName = info.roomName || '';
         this._roomMembers = info.members;
         this._enterWaitingRoom();
       }
@@ -325,6 +607,7 @@ class Impar2DApp {
 
   _enterWaitingRoom() {
     this._clearOnlineStatus();
+    this._stopRoomBrowser();
     this.el.lobbyConfigPanel.classList.add('hidden');
     this.el.waitingRoomPanel.classList.remove('hidden');
     this._renderWaitingRoom();
@@ -334,15 +617,30 @@ class Impar2DApp {
     this.el.waitingRoomPanel.classList.add('hidden');
     this.el.lobbyConfigPanel.classList.remove('hidden');
     this._clearOnlineStatus();
+    this._syncRoomBrowserSubscription();
   }
 
   _renderWaitingRoom() {
     const isHost = this.online.role === 'host';
     const maxP = this.online.maxPlayers || this.playerCount;
     const members = this._roomMembers || [];
+    const isPublicFree = this._roomVisibility === 'public';
+    const isPublicPass = this._roomVisibility === 'public-pass';
 
+    this.el.waitingRoomPublicBox.classList.toggle('hidden', !isPublicFree);
+    this.el.waitingRoomCodeBox.classList.toggle('hidden', isPublicFree);
+
+    const displayRoomName = this._roomName || `Mesa de ${members[0]?.name || 'Anfitrião'}`;
+    this.el.waitingPublicName.textContent = displayRoomName;
+    this.el.waitingCodeRoomName.textContent = displayRoomName;
     this.el.waitingRoomCode.textContent = this.online.roomCode || '-----';
-    this.el.roomLockBadge.textContent = this._roomHasPassword ? '🔒 Com senha' : '🔓 Sem senha';
+    this.el.roomLockBadge.textContent = isPublicFree
+      ? '🌐 Sala Livre'
+      : isPublicPass
+        ? '🔐 Pública c/ Senha'
+        : this._roomHasPassword
+          ? '🔑 Privada c/ Senha'
+          : '🔑 Privada';
     this.el.waitingPlayersLabel.textContent = `Jogadores na Sala (${members.length}/${maxP})`;
     this.el.waitingBotDiff.textContent = AI_DIFFICULTIES[this.difficulty]?.name || 'Tático';
 
@@ -369,6 +667,7 @@ class Impar2DApp {
 
   _startOnlineMatchAsHost() {
     if (this.online.role !== 'host') return;
+    this.directory.unpublishRoom();
     const maxP = this.online.maxPlayers;
     const members = this._roomMembers;
     const fillBots = this.el.chkFillBots.checked;

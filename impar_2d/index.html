@@ -47,8 +47,9 @@
         <div class="form-section hidden" id="online-action-section">
           <span class="form-label">Ação Online</span>
           <div class="segmented" id="online-tab-select">
-            <button class="seg-btn selected" data-online-tab="create">Criar Sala</button>
-            <button class="seg-btn" data-online-tab="join">Entrar na Sala</button>
+            <button class="seg-btn selected" data-online-tab="browse">Salas Abertas</button>
+            <button class="seg-btn" data-online-tab="create">Criar Sala</button>
+            <button class="seg-btn" data-online-tab="join">Por Código</button>
           </div>
         </div>
 
@@ -77,9 +78,35 @@
           </div>
         </div>
 
+        <div class="form-section hidden" id="online-browse-fields">
+          <div class="rooms-browser-header">
+            <span class="form-label" style="margin-bottom:0;">Salas Disponíveis</span>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span class="dir-status-pill" id="online-dir-status">Buscando...</span>
+              <button type="button" class="icon-btn" id="btn-refresh-rooms">Atualizar</button>
+            </div>
+          </div>
+          <div id="online-rooms-list" class="rooms-browser-list"></div>
+        </div>
+
         <div class="form-section hidden" id="online-create-fields">
-          <span class="form-label">Senha da Sala (opcional)</span>
-          <input type="password" class="text-input" id="online-create-pass" maxlength="20" placeholder="Deixe vazio para sala sem senha" style="width:100%;" />
+          <span class="form-label">Tipo de Sala</span>
+          <div class="segmented" id="online-visibility-select">
+            <button type="button" class="seg-btn selected" data-visibility="public">🌐 Livre</button>
+            <button type="button" class="seg-btn" data-visibility="public-pass">🔐 Pública c/ Senha</button>
+            <button type="button" class="seg-btn" data-visibility="private">🔑 Privada</button>
+          </div>
+          <p class="visibility-hint" id="online-visibility-hint">Aparece em Salas Abertas — qualquer pessoa entra sem código e sem senha.</p>
+
+          <div style="margin-top:10px;">
+            <span class="form-label">Nome da Sala (opcional)</span>
+            <input type="text" class="text-input" id="online-room-name" maxlength="28" placeholder="Nome da sala (opcional)" style="width:100%;" />
+          </div>
+
+          <div id="online-create-pass-wrap" class="hidden" style="margin-top:10px;">
+            <span class="form-label" id="online-pass-label">Senha da Sala</span>
+            <input type="password" class="text-input" id="online-create-pass" maxlength="20" placeholder="Digite a senha da sala" style="width:100%;" />
+          </div>
         </div>
 
         <div class="form-section hidden" id="online-join-fields">
@@ -104,8 +131,18 @@
           <div id="waiting-wordmark"></div>
           <span class="edition-tag" id="room-lock-badge">🔓 Sem senha</span>
         </div>
-        <div class="room-code-box">
+
+        <div class="public-room-banner hidden" id="waiting-room-public-box">
           <div>
+            <div style="font-size:15px;font-weight:800;color:#14171f;" id="waiting-public-name">Mesa Online</div>
+            <div style="font-size:12px;color:#0369a1;font-weight:600;margin-top:2px;">🌐 Sala Livre — Visível em Salas Abertas (sem código e sem senha)</div>
+          </div>
+          <button class="icon-btn" id="btn-copy-link-public">Copiar Link</button>
+        </div>
+
+        <div class="room-code-box" id="waiting-room-code-box">
+          <div>
+            <div style="font-size:13.5px;font-weight:800;color:#14171f;margin-bottom:3px;" id="waiting-code-room-name">Mesa Online</div>
             <span class="form-label" style="margin-bottom:2px;">Código da Sala</span>
             <div class="room-code-text" id="waiting-room-code">-----</div>
           </div>
@@ -200,6 +237,7 @@
   </div>
 
   <script src="./vendor/peerjs/peerjs.min.js"></script>
+  <script src="./vendor/mqtt/mqtt.min.js"></script>
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>
